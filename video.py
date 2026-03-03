@@ -327,7 +327,73 @@ def standings_overlay(clip, data, racer_index, drivers_list, start, gap_before_s
     return texts
 
 
- 
+def racer_overlay_only_lap_times(clip, lap_times, gap_before_start=40, gap_after_finish=10):
+    """
+    Создает оверлей с данными гонщика для видео.
+    """
+    
+    texts = []
+    mem_time = gap_before_start
+    mem_time_str = ''
+    duration = lap_times[0] if lap_times else 0
+    
+    for cur_lap in range(len(lap_times)):
+        # Пропускаем невалидные круги
+        if lap_times[cur_lap] == -1:
+            continue
+            
+        mem_time += duration
+        
+        # Определяем продолжительность следующего сегмента
+        if cur_lap + 1 < len(lap_times):
+            next_lap_time = lap_times[cur_lap + 1]
+            if next_lap_time == -1:
+                # Ищем следующий валидный круг
+                for future_lap in range(cur_lap + 2, len(lap_times)):
+                    if lap_times[future_lap] != -1:
+                        next_lap_time = lap_times[future_lap]
+                        break
+                else:
+                    next_lap_time = gap_after_finish
+            duration = next_lap_time
+        else:
+            duration = gap_after_finish
+        
+        # Добавляем информацию о круге
+        
+        mem_time_str += f'L{cur_lap + 1}: {lap_times[cur_lap]}'
+        
+        # Текст времени круга
+        if lap_times[cur_lap] == min(lap_times) and lap_times[cur_lap] != -1:
+            text_lap_times = TextClip(
+                font=FONT_PATH,
+                text=mem_time_str, 
+                font_size=TEXT_SIZE,
+                margin=(1,5),
+                color='purple',
+                bg_color='rgba(0,0,0,100)'
+            )
+        else:
+            text_lap_times = TextClip(
+                font=FONT_PATH,
+                text=mem_time_str, 
+                font_size=TEXT_SIZE,
+                margin=(1,5),
+                color='white',
+                bg_color='rgba(0,0,0,100)'
+            )
+        
+        pozition = (0, clip.size[1] / 2 - text_lap_times.size[1])
+
+        text_lap_times = text_lap_times.with_position(pozition).with_duration(duration).with_start(mem_time)
+        
+        # Добавляем в список
+        mem_time_str += '\n'
+        texts.append(text_lap_times)
+    
+    return texts
+
+
 class TkinterFFPyPlayer:  
     def __init__(self, root, video_path):  
         self.root = root  
@@ -345,40 +411,75 @@ class TkinterFFPyPlayer:
         self.play_btn = tk.Button(  
             self.control_frame, text="Play", command=self.toggle_play  
         )  
-        self.play_btn.grid(row=0, column=0, padx=5)  
+        self.play_btn.grid(row=0, column=2, padx=5) 
+
+        self.next_frame = tk.Button(  
+            self.control_frame, text=">", command=self.frame_forward  
+        )  
+        self.next_frame.grid(row=0, column=4, padx=5) 
+
+        self.plus = tk.Button(  
+            self.control_frame, text="+5s", command=self.plus_5_seconds 
+        )  
+        self.plus.grid(row=0, column=3, padx=5) 
+
+        self.minus = tk.Button(  
+            self.control_frame, text="-5s", command=self.minyus_5_seconds  
+        )
+        self.minus.grid(row=0, column=1, padx=5) 
+
+        self.ok_buutton = tk.Button(  
+            self.control_frame, text="Ok", command=self.ok  
+        )
+        self.ok_buutton.grid(row=0, column=5, padx=5)
  
         self.is_playing = False  
         self.update_frame()  
  
     def toggle_play(self):  
-        self.is_playing = not self.is_playing  
-        self.play_btn.config(text="Pause" if self.is_playing else "Play")  
+        self.is_playing = not self.is_playing
+        self.player.set_pause(not self.is_playing)
+        self.play_btn.config(text="Pause" if self.is_playing else "Play")
+
+    def frame_forward(self):
+        self.is_playing = False
+        self.player.set_pause(self.is_playing)
+        frame, val = self.player.get_frame()
+
+        if frame is not None:
+            # Convert ffpyplayer frame to Pillow Image  
+            img, time = frame
+            img = Image.frombytes("RGB", img.get_size(), img.to_bytearray()[0])  
+            imgtk = ImageTk.PhotoImage(image=img)  
+            self.video_label.imgtk = imgtk  
+            self.video_label.config(image=imgtk)
+    
+    def plus_5_seconds(self):
+        self.player.seek(5, relative=True)
+    
+    def minyus_5_seconds(self):
+        self.player.seek(-5, relative=True)
+
+    def ok(self):
+        self.start = self.player.get_pts()
+        self.root.destroy()
  
     def update_frame(self):  
         if self.is_playing:  
-            # Get frame and audio (returns (frame, val, time))  
-            frame, val = self.player.get_frame()  
-            if val == "eof":  # End of file  
-                self.is_playing = False  
-                self.play_btn.config(text="Play")  
-                return  
+            frame, val = self.player.get_frame()
  
             if frame is not None:  
                 # Convert ffpyplayer frame to Pillow Image  
-                img, _ = frame  
+                img, time = frame
                 img = Image.frombytes("RGB", img.get_size(), img.to_bytearray()[0])  
                 imgtk = ImageTk.PhotoImage(image=img)  
                 self.video_label.imgtk = imgtk  
                 self.video_label.config(image=imgtk)  
  
         # Update every ~30ms (adjust based on FPS)  
-        self.root.after(5, self.update_frame)  
+        self.root.after(int(round(1000 / FPS)), self.update_frame)  
  
-# if __name__ == "__main__":  
-#     root = tk.Tk()  
-#     # Replace with your AVI/MP4 file path  
-#     player = TkinterFFPyPlayer(root, video_path=r"C:\Users\Mi\Desktop\Картинг\Premium 2025.12.09\ultra_final.mp4")  
-#     root.mainloop()
+
 
 class TkinterCollectingData:  
     def __init__(self, root):  
@@ -392,20 +493,21 @@ class TkinterCollectingData:
         self.play_btn = tk.Button(  
             self.control_frame, text="Ok", command=self.toggle_Ok
         )  
-        self.play_btn.grid(row=11, column=0, padx=5, pady=5) 
+        self.play_btn.grid(row=13, column=0, padx=5, pady=5) 
   
     def toggle_Ok(self):
         self.clip_path = clip_path_entry.get()
         self.data_path = data_path_entry.get()
         self.output_path = output_path_entry.get()
         self.target_name = target_name_entry.get()
-        self.start_raw = start_raw_entry.get()
         self.gap_before = gap_before_entry.get()
         self.gap_after = gap_after_entry.get()
         self.compress_video_check = compress_video_check.get()
         self.compress_video_entry = compress_video_entry.get()
         self.render_check = render_check.get()
         self.preview_check = preview_check.get()
+        self.only_1_dtiver_check = only_1_dtiver_check.get()
+        self.lap_times_entry = lap_times_entry.get()
         root.destroy()
 
 class TkinterEntryData:  
@@ -442,59 +544,83 @@ if __name__ == "__main__":
     data_path_entry = TkinterEntryData(data_from_user.control_frame, "Путь к CSV файлу:", r"project_karting\parsed data\complete_race_data_Гонка_Новичков_Квалификация_3_20251222.csv", 1)
     output_path_entry = TkinterEntryData(data_from_user.control_frame, "Путь к выходному видеофайлу:", r"C:\Users\Mi\Desktop\Картинг\test1.mp4", 2)
     target_name_entry = TkinterEntryData(data_from_user.control_frame, "Имя гонщика:", "EGGORKA", 3)
-    start_raw_entry = TkinterEntryData(data_from_user.control_frame, "Старт (мин, сек, кадры):", "0,30,13", 4)
     gap_before_entry = TkinterEntryData(data_from_user.control_frame, "Задержка до старта (сек):", "5", 5)
     gap_after_entry = TkinterEntryData(data_from_user.control_frame, "Задержка после финиша (сек):", "5", 6)
     compress_video_check = TkinterCheckbuttonData(data_from_user.control_frame, "Сжимать видео", False, 7)
     compress_video_entry = TkinterEntryData(data_from_user.control_frame, "Высота видео после сжатия", "480", 8)
     render_check = TkinterCheckbuttonData(data_from_user.control_frame, "Рендерить видео", False, 9)
     preview_check = TkinterCheckbuttonData(data_from_user.control_frame, "Показывать превью", False, 10)
-    
+    only_1_dtiver_check = TkinterCheckbuttonData(data_from_user.control_frame, "Только 1 гонщик (заполнить вручную времена кругов)", False, 11)
+    lap_times_entry = TkinterEntryData(data_from_user.control_frame, "Времена кругов через запятую (если только 1 гонщик):", "31.906, 29.963, 31.307", 12)
+
     root.mainloop()
     
     clip =  VideoFileClip(data_from_user.clip_path)
     csv_file = data_from_user.data_path
     output_file = data_from_user.output_path
     target_name = data_from_user.target_name
-    start_raw = [int(x) for x in data_from_user.start_raw.split(",")] # минуты, секунды, КАДРЫ
     gap_before = int(data_from_user.gap_before)
     gap_after = int(data_from_user.gap_after)
     compress_video = [data_from_user.compress_video_check, int(data_from_user.compress_video_entry)] # Сжимать ли видео
     render = data_from_user.render_check # Установите в False для пропуска рендеринга видео
     preview = data_from_user.preview_check # Показать несколько превью
+    only_1_dtiver = data_from_user.only_1_dtiver_check # Заполнять ли времена кругов вручную
+    if only_1_dtiver:
+        lap_times_str = data_from_user.lap_times_entry
+        lap_times = [float(t.strip()) for t in lap_times_str.split(',') if t.strip().replace('.','',1).isdigit()]
 
 
-    start = start_raw[0] * 60 + start_raw[1] + start_raw[2] / round(clip.fps)
+    root = tk.Tk()
+    global FPS
+    FPS = round(clip.fps)
+    player = TkinterFFPyPlayer(root, video_path=data_from_user.clip_path)  
+    root.mainloop()
+
+    start = player.start
 
     if compress_video[0]:
         clip = clip.with_effects([vfx.Resize(height=compress_video[1])])
 
-    data = parse_csv_data(csv_file)
-    drivers_list = [name[1] for name in data[0]]
-    print(drivers_list)
-
-    try:
-        target_index = drivers_list.index(target_name)
-        print(f"Найден гонщик: {target_name}, индекс: {target_index}")
-    except ValueError:
-        print(f"Гонщик {target_name} не найден. Доступные:")
-        for i, name in enumerate(drivers_list):
-            print(f"  {i}: {name}")
-        target_index = 0  # По умолчанию первый гонщик
-
-
     global TEXT_SIZE
     TEXT_SIZE = 0.05 * clip.size[1]
+
+    if only_1_dtiver:
+
+        total_time = sum(lap_times)
+
+        # Обрезаем видео
+        clip = clip.subclipped(
+            start - gap_before,
+            start + total_time + gap_after
+        )
+
+        time_overlays = racer_overlay_only_lap_times(
+            clip, lap_times,
+            gap_before, gap_after
+        )
+
+        all_overlays = time_overlays
+
+    else:
+        data = parse_csv_data(csv_file)
+        drivers_list = [name[1] for name in data[0]]
+        print(drivers_list)
+
+        try:
+            target_index = drivers_list.index(target_name)
+            print(f"Найден гонщик: {target_name}, индекс: {target_index}")
+        except ValueError:
+            print(f"Гонщик {target_name} не найден. Доступные:")
+            for i, name in enumerate(drivers_list):
+                print(f"  {i}: {name}")
+            target_index = 0  # По умолчанию первый гонщик
+
     
-    # Получаем данные целевого гонщика для расчета длительности
-    lap_times, _, _ = data_by_racer(data, target_index)
-    valid_times = [t for t in lap_times if t != -1]
-    
-    if valid_times:
-        total_time = sum(valid_times)
+        # Получаем данные целевого гонщика для расчета длительности
+        lap_times, _, _ = data_by_racer(data, target_index)
+        valid_times = [t for t in lap_times if t != -1]
         
-        # Создаем оверлеи
-        print("Создание оверлеев...")
+        total_time = sum(valid_times)
 
         # Обрезаем видео
         clip = clip.subclipped(
@@ -504,34 +630,33 @@ if __name__ == "__main__":
         
         # Оверлей времени кругов (левый бок)
         time_overlays = racer_overlay(
-            clip, data, target_index, start,
+            clip, data, target_index,
             gap_before, gap_after
         )
+
         # Оверлей позиций (правый бок)
         standings_overlays = standings_overlay(
             clip, data, target_index, drivers_list, start,
             gap_before, gap_after
         )
-
         
-        # Комбинируем все оверлеи
         all_overlays = time_overlays + standings_overlays
-        video_with_overlays = CompositeVideoClip([clip] + all_overlays)
-
-        print(lap_times)
-
-        if preview:
-            video_with_overlays.show(gap_before)
-            video_with_overlays.show(gap_before + lap_times[0])
-            video_with_overlays.show(gap_before + lap_times[0] + lap_times[1])
-            video_with_overlays.show(gap_before + sum(lap_times[0:-1]))
-
-        if render:
-            video_with_overlays.write_videofile(output_file, codec='libx264', audio_codec='aac')
         
-        # Звук завершения
-        playsound('project_karting/apple-pay-succes.mp3')
-        
-        print("Готово!")
-    else:
-        print(f"Нет валидных данных для гонщика {target_name}")
+
+
+    video_with_overlays = CompositeVideoClip([clip] + all_overlays)
+
+    if preview:
+        video_with_overlays.show(gap_before)
+        video_with_overlays.show(gap_before + lap_times[0])
+        video_with_overlays.show(gap_before + lap_times[0] + lap_times[1])
+        video_with_overlays.show(gap_before + sum(lap_times[0:-1]))
+
+    if render:
+        video_with_overlays.write_videofile(output_file, codec='libx264', audio_codec='aac')
+    
+    # Звук завершения
+    playsound('project_karting/apple-pay-succes.mp3')
+    
+    print("Готово!")
+    
